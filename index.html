@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+		<title>Param Sculpt</title>
+
+		<style>
+html, body {
+	overflow: hidden;
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+}
+
+#renderCanvas {
+	width: 100%;
+	height: 100%;
+	touch-action: none;
+}
+		</style>
+
+		<script src="https://preview.babylonjs.com/babylon.js"></script>
+		<script src="https://preview.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+		<script src="https://preview.babylonjs.com/materialsLibrary/babylonjs.materials.min.js"></script>
+		<script src="https://code.jquery.com/pep/0.4.3/pep.js"></script>
+	</head>
+	<body>
+		<canvas id="renderCanvas"></canvas>
+	<script>
+var canvas = document.getElementById("renderCanvas");
+var engine = new BABYLON.Engine(canvas, true); // Generate the BABYLON 3D engine
+var camera;
+
+var createScene = function () {
+    var scene = new BABYLON.Scene(engine);
+	scene.clearColor = new BABYLON.Color3(224./255, 229./255, 219./255);
+
+    camera = new BABYLON.ArcRotateCamera("camera1", 3, 1, 3, new BABYLON.Vector3(0, 5, -10), scene);
+    camera.setTarget(BABYLON.Vector3.Zero());
+
+    // This attaches the camera to the canvas
+    camera.attachControl(canvas, true);
+
+    var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0, 1, 0), scene);
+    light.intensity = 0.7;
+	
+	var customMesh = new BABYLON.Mesh("custom", scene);
+
+	const u_min = 0;
+	const u_max = 2 * Math.PI;
+	const v_min = 0;
+	const v_max = Math.PI;
+	const r = 2;
+	const t = 3.5;
+
+	const u_res = 41;
+	const v_res = 21;
+
+	const d_u = (u_max - u_min) / (u_res - 1);
+	const d_v = (v_max - v_min) / (v_res - 1);
+
+
+	// TODO these are hacky definitions
+	let c = (w, m) => Math.cos(w) == 0 ? (m <= 0 ? 1 : 0) : Math.sign(Math.cos(w)) * Math.pow(Math.abs(Math.cos(w)), m);
+	let s = (w, m) => Math.sin(w) == 0 ? (m <= 0 ? 1 : 0) : Math.sign(Math.sin(w)) * Math.pow(Math.abs(Math.sin(w)), m);
+
+	let x = (u, v) => r * s(u, 2 / t) * s(v, 2 / t);
+	let y = (u, v) => r * c(v, 2 / t);
+	let z = (u, v) => r * c(u, 2 / t) * s(v, 2 / t);
+
+	let x_prime = (u, v) => Math.sign(x(u, v)) * Math.abs(c(u, 2 / t - 1) * c(v, 2 / t - 1) * Math.sin(u) * s(v, 2 / t + 1));
+	let y_prime = (u, v) => v == 0 ? 1 : Math.sign(y(u, v)) * Math.abs(c(u, 2 / t - 1) * Math.cos(v) * s(u, 2 / t - 1) * s(v, 4 / t - 1));
+	let z_prime = (u, v) => Math.sign(z(u, v)) * Math.abs(Math.cos(u) * c(v, 2 / t - 1) * s(u, 2 / t - 1) * s(v, 2 / t + 1));
+
+	let pts = []; // u,v indexed array of points
+	let nrms = []; // u,v indexed
+
+	console.log(nrms);
+
+	for (let i_u = 0; i_u < u_res; i_u++) {
+		let u = i_u * d_u + u_min;
+		let v_pts = [];
+		let v_nrms = [];
+		for (let i_v = 0; i_v < v_res; i_v++) {
+			let v = i_v * d_v + v_min;
+			let pt = [x(u, v), y(u, v), z(u, v)];
+			let norm = [x_prime(u, v), y_prime(u, v), z_prime(u, v)];
+			v_pts.push(pt);
+			v_nrms.push(norm);
+		}
+		pts.push(v_pts);
+		nrms.push(v_nrms);
+	}
+
+	let positions = []; // positions for facets
+	let indices = []; // indices for facets
+	let normals = [];
+	let j = 0;
+
+	for (let i_u = 1; i_u < u_res; i_u++) {
+		for (let i_v = 1; i_v < v_res; i_v++) {
+			positions = positions.concat(pts[i_u-1][i_v-1], pts[i_u][i_v-1], pts[i_u][i_v]);
+			normals = normals.concat(nrms[i_u-1][i_v-1], nrms[i_u][i_v-1], nrms[i_u][i_v]);
+			indices.push(j++, j++, j++);
+			positions = positions.concat(pts[i_u-1][i_v-1], pts[i_u][i_v], pts[i_u-1][i_v]);
+			normals = normals.concat(nrms[i_u-1][i_v-1], nrms[i_u][i_v], nrms[i_u-1][i_v]);
+			indices.push(j++, j++, j++);
+		}
+	}
+
+	let vertexData = new BABYLON.VertexData();
+	vertexData.positions = positions;
+	vertexData.indices = indices;
+	vertexData.normals = normals;
+	vertexData.applyToMesh(customMesh);
+	var mat = new BABYLON.StandardMaterial("mat", scene);
+	//mat.wireframe = true;
+	customMesh.material = mat;
+
+    return scene;
+};
+
+var scene = createScene();
+
+engine.runRenderLoop(function () { 
+	scene.render();
+});
+
+window.addEventListener("resize", function () { 
+	engine.resize();
+});
+	</script>
+	</body>
+</html>
